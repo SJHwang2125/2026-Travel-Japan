@@ -1,6 +1,3 @@
-import { Hub } from "./tripData"; // Self-referencing interface for types if needed, but defining here to avoid circular dep issues in this file context if we were using it differently. 
-// However, since we are overwriting, I will redefine the interfaces to be safe or just export the data matching the existing structure.
-
 export interface Spot {
   t: string;
   n: string;
