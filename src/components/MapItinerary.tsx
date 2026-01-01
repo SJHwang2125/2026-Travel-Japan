@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import L from "leaflet";
 import { fetchTripData, updateTripData } from "@/services/tripService";
 import { Hub, BudgetItem, TodoItem, TRIP_DATA, BUDGET_DATA, TODO_DATA } from "@/data/tripData";
-import { Clock, MapPin, Navigation, Menu, X, ArrowLeft, ExternalLink, RefreshCw, Plus, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { Clock, MapPin, Navigation, Menu, X, ArrowLeft, ExternalLink, RefreshCw, Plus, Trash2, CheckCircle2, Circle, ArrowRight, Calendar } from "lucide-react";
 
 export default function MapItinerary() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -30,6 +30,37 @@ export default function MapItinerary() {
   const [currentTime, setCurrentTime] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   const [headerTitle, setHeaderTitle] = useState("여행 전체 일정");
+
+  // Nav Params Memo
+  const navParams = useMemo(() => {
+    if (!selectedHubId || selectedDayIdx === null || !tripData.length) return { prev: null, next: null };
+    
+    const hubIdx = tripData.findIndex(h => h.id === selectedHubId);
+    const hub = tripData[hubIdx];
+    if (!hub) return { prev: null, next: null };
+
+    let prev = null;
+    let next = null;
+
+    // Prev
+    if (selectedDayIdx > 0) {
+        prev = { hId: selectedHubId, dIdx: selectedDayIdx - 1, title: hub.days[selectedDayIdx - 1].title, date: hub.days[selectedDayIdx - 1].date };
+    } else if (hubIdx > 0) {
+        const prevHub = tripData[hubIdx - 1];
+        prev = { hId: prevHub.id, dIdx: prevHub.days.length - 1, title: prevHub.days[prevHub.days.length - 1].title, date: prevHub.days[prevHub.days.length - 1].date };
+    }
+
+    // Next
+    if (selectedDayIdx < hub.days.length - 1) {
+        next = { hId: selectedHubId, dIdx: selectedDayIdx + 1, title: hub.days[selectedDayIdx + 1].title, date: hub.days[selectedDayIdx + 1].date };
+    } else if (hubIdx < tripData.length - 1) {
+        const nextHub = tripData[hubIdx + 1];
+        next = { hId: nextHub.id, dIdx: 0, title: nextHub.days[0].title, date: nextHub.days[0].date };
+    }
+
+    return { prev, next };
+  }, [tripData, selectedHubId, selectedDayIdx]);
+
 
   // Fetch Data on Mount
   useEffect(() => {
@@ -97,17 +128,19 @@ export default function MapItinerary() {
     if (viewState === 'spots' && selectedHubId && selectedDayIdx !== null && mapRef.current) {
         const hub = tripData.find(h => h.id === selectedHubId);
         if (hub) {
-            const spot = hub.days[selectedDayIdx].spots[activeSpotIndex];
+            // Adjust index for Prev Card
+            const spotIndex = activeSpotIndex - (navParams.prev ? 1 : 0);
+            const spot = hub.days[selectedDayIdx].spots[spotIndex];
+            
             if (spot) {
                 mapRef.current.flyTo(spot.p, 16, { duration: 0.6, easeLinearity: 0.5 });
                 
-                // Highlight marker (simple opacity toggle for now, or finding marker by ID if we stored refs)
-                // Re-rendering spots to update highlights is expensive but safest for consistency
+                // Highlight marker
                 renderSpotsOnMap(selectedHubId, selectedDayIdx); 
             }
         }
     }
-  }, [activeSpotIndex]);
+  }, [activeSpotIndex, navParams]);
 
 
   const renderHubsOnMap = () => {
@@ -171,7 +204,11 @@ export default function MapItinerary() {
 
     day.spots.forEach((spot, idx) => {
         points.push(spot.p);
-        const isActive = idx === activeSpotIndex;
+        
+        // Adjust for Prev Card
+        const adjustedActiveIdx = activeSpotIndex - (navParams.prev ? 1 : 0);
+        const isActive = idx === adjustedActiveIdx;
+
         // Highlight active marker with a different class or size
         const markerClass = isActive ? "spot-marker active-marker" : "spot-marker";
         const zIndex = isActive ? 1000 : 0;
@@ -198,10 +235,12 @@ export default function MapItinerary() {
         
         // On marker click, scroll carousel to this item
         marker.on('click', () => {
-            setActiveSpotIndex(idx);
+            // Need to add offset back
+            const carouselIdx = idx + (navParams.prev ? 1 : 0);
+            setActiveSpotIndex(carouselIdx);
             if (carouselRef.current) {
                 const cardWidth = 320; // Approx card width + gap
-                carouselRef.current.scrollTo({ left: idx * cardWidth, behavior: 'smooth' });
+                carouselRef.current.scrollTo({ left: carouselIdx * cardWidth, behavior: 'smooth' });
             }
         });
     });
@@ -211,10 +250,6 @@ export default function MapItinerary() {
         routeLineRef.current = L.polyline(points, { 
             color: '#3b82f6', weight: 3, dashArray: '5, 10', opacity: 0.6, lineCap: 'round' 
         }).addTo(mapRef.current);
-        
-        // Only fly to bounds if we are NOT in mobile interaction mode (initial load)
-        // Check if we just entered the view
-        // For simplicity, we trust the effect hook to fly to active spot (index 0)
     }
   };
 
@@ -423,7 +458,7 @@ export default function MapItinerary() {
 
                     return (
                         <div key={idx} 
-                            onClick={() => { setSelectedDayIdx(idx); setViewState('spots'); setActiveSpotIndex(0); setMobileSidebarOpen(false); }}
+                            onClick={() => { setSelectedDayIdx(idx); setViewState('spots'); setActiveSpotIndex(navParams.prev ? 1 : 0); setMobileSidebarOpen(false); }}
                             className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 cursor-pointer hover:bg-slate-800 hover:border-slate-700 transition">
                             <div className="flex items-center gap-2 mb-1">
                                 <span className={`text-[10px] font-mono bg-blue-900/20 px-1.5 rounded ${dateStyle}`}>
@@ -481,7 +516,8 @@ export default function MapItinerary() {
                     {day.spots.map((spot, idx) => {
                         const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.n)}`;
                         const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.p[0]},${spot.p[1]}`;
-                        const isActive = idx === activeSpotIndex;
+                        const adjustedActiveIdx = activeSpotIndex - (navParams.prev ? 1 : 0);
+                        const isActive = idx === adjustedActiveIdx;
 
                         return (
                             <div key={idx} 
@@ -512,7 +548,7 @@ export default function MapItinerary() {
                                                 />
                                             </div>
                                         ) : (
-                                            <div className="cursor-pointer" onClick={() => { setActiveSpotIndex(idx); }}>
+                                            <div className="cursor-pointer" onClick={() => { setActiveSpotIndex(idx + (navParams.prev ? 1 : 0)); }}>
                                                 <span className={`text-[10px] font-mono text-blue-300 bg-blue-900/30 px-1.5 py-0.5 rounded mb-1 inline-block border border-blue-500/10 ${isActive ? 'text-blue-200 bg-blue-600/50 border-blue-400' : ''}`}>{spot.t}</span>
                                                 <h4 className={`text-sm font-bold transition ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'}`}>{spot.n}</h4>
                                                 <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{spot.d}</p>
@@ -555,42 +591,19 @@ export default function MapItinerary() {
                         </button>
                     )}
 
-                    {/* Next Day Navigation */}
-                    {!isEditMode && (() => {
-                        const hubIdx = tripData.findIndex(h => h.id === selectedHubId);
-                        let nextParams: { hId: string, dIdx: number } | null = null;
-                        let nextTitle = "";
-                        let nextDesc = "";
-
-                        if (selectedDayIdx < hub.days.length - 1) {
-                            nextParams = { hId: selectedHubId, dIdx: selectedDayIdx + 1 };
-                            nextTitle = hub.days[selectedDayIdx + 1].title;
-                            nextDesc = "다음 날 일정 이어보기";
-                        } else if (hubIdx < tripData.length - 1) {
-                            const nextHub = tripData[hubIdx + 1];
-                            nextParams = { hId: nextHub.id, dIdx: 0 };
-                            nextTitle = `${nextHub.city}로 이동`;
-                            nextDesc = nextHub.days[0].title;
-                        }
-
-                        return nextParams ? (
-                            <div 
-                                onClick={() => { setSelectedHubId(nextParams!.hId); setSelectedDayIdx(nextParams!.dIdx); setActiveSpotIndex(0); }}
-                                className="mt-8 p-4 rounded-xl border border-dashed border-slate-700 hover:border-blue-500 hover:bg-slate-800/50 cursor-pointer transition text-center group animate-in"
-                            >
-                                <p className="text-xs text-slate-500 group-hover:text-blue-400 mb-1">{nextDesc}</p>
-                                <h3 className="font-bold text-slate-200 group-hover:text-white flex items-center justify-center gap-2">
-                                    {nextTitle} 
-                                    <ArrowLeft size={16} className="rotate-180" />
-                                </h3>
-                            </div>
-                        ) : (
-                            <div className="mt-8 p-4 rounded-xl bg-slate-800/50 border border-slate-700 text-center animate-in">
-                                <p className="text-xs text-slate-500 mb-1">모든 여정이 끝났습니다</p>
-                                <h3 className="font-bold text-slate-300">즐거운 여행 되세요! ✈️</h3>
-                            </div>
-                        );
-                    })()}
+                    {/* Next Day Navigation (Desktop) */}
+                    {!isEditMode && navParams.next && (
+                        <div 
+                            onClick={() => { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(navParams.next.dIdx > 0 ? 0 : 0); }}
+                            className="mt-8 p-4 rounded-xl border border-dashed border-slate-700 hover:border-blue-500 hover:bg-slate-800/50 cursor-pointer transition text-center group animate-in"
+                        >
+                            <p className="text-xs text-slate-500 group-hover:text-blue-400 mb-1">다음 날 일정 이어보기</p>
+                            <h3 className="font-bold text-slate-200 group-hover:text-white flex items-center justify-center gap-2">
+                                {navParams.next.title} 
+                                <ArrowLeft size={16} className="rotate-180" />
+                            </h3>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -795,27 +808,63 @@ export default function MapItinerary() {
                             style={{ scrollBehavior: 'smooth' }}
                         >
                             <div className="w-[calc(50vw-150px)] shrink-0 snap-center"></div>
-                            {tripData.find(h => h.id === selectedHubId)?.days[selectedDayIdx].spots.map((spot, idx) => (
+                            
+                            {/* Prev Card */}
+                            {navParams.prev && (
                                 <div 
-                                    key={idx} 
-                                    onClick={() => setActiveSpotIndex(idx)}
-                                    className={`w-[300px] shrink-0 snap-center bg-slate-900/90 border backdrop-blur-md p-4 rounded-2xl shadow-2xl transition-all duration-300 transform ${activeSpotIndex === idx ? 'border-blue-500 scale-100 opacity-100' : 'border-slate-800 scale-95 opacity-70'}`}
+                                    onClick={() => { setSelectedHubId(navParams.prev.hId); setSelectedDayIdx(navParams.prev.dIdx); setActiveSpotIndex(0); }}
+                                    className={`w-[300px] shrink-0 snap-center bg-slate-950/90 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-2xl flex flex-col justify-center items-center text-center cursor-pointer transition-all duration-300 transform ${activeSpotIndex === 0 ? 'border-blue-500 scale-100 opacity-100' : 'scale-95 opacity-70'}`}
                                 >
-                                    <div className="flex items-start justify-between mb-2">
-                                        <span className="text-[10px] font-mono bg-blue-500/20 text-blue-200 px-2 py-0.5 rounded border border-blue-500/30">{spot.t}</span>
-                                        <div className="flex gap-2">
-                                            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.n)}`} target="_blank" className="p-1.5 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-blue-600 transition">
-                                                <ExternalLink size={12} />
-                                            </a>
-                                            <a href={`https://www.google.com/maps/dir/?api=1&destination=${spot.p[0]},${spot.p[1]}`} target="_blank" className="p-1.5 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-blue-600 transition">
-                                                <Navigation size={12} />
-                                            </a>
-                                        </div>
-                                    </div>
-                                    <h3 className="text-base font-bold text-white mb-1 line-clamp-1">{spot.n}</h3>
-                                    <p className="text-xs text-slate-400 line-clamp-2">{spot.d}</p>
+                                    <div className="text-slate-500 text-xs font-mono mb-2">{navParams.prev.date}</div>
+                                    <h3 className="text-lg font-bold text-slate-300 flex items-center gap-2">
+                                        <ArrowLeft size={18} /> 이전 일정
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-1">{navParams.prev.title}</p>
                                 </div>
-                            ))}
+                            )}
+
+                            {tripData.find(h => h.id === selectedHubId)?.days[selectedDayIdx].spots.map((spot, idx) => {
+                                // Adjust index logic for highlighting active state
+                                const visualIndex = idx + (navParams.prev ? 1 : 0);
+                                const isActive = activeSpotIndex === visualIndex;
+
+                                return (
+                                    <div 
+                                        key={idx} 
+                                        onClick={() => setActiveSpotIndex(visualIndex)}
+                                        className={`w-[300px] shrink-0 snap-center bg-slate-900/90 border backdrop-blur-md p-4 rounded-2xl shadow-2xl transition-all duration-300 transform ${isActive ? 'border-blue-500 scale-100 opacity-100' : 'border-slate-800 scale-95 opacity-70'}`}
+                                    >
+                                        <div className="flex items-start justify-between mb-2">
+                                            <span className="text-[10px] font-mono bg-blue-500/20 text-blue-200 px-2 py-0.5 rounded border border-blue-500/30">{spot.t}</span>
+                                            <div className="flex gap-2">
+                                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.n)}`} target="_blank" className="p-1.5 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-blue-600 transition">
+                                                    <ExternalLink size={12} />
+                                                </a>
+                                                <a href={`https://www.google.com/maps/dir/?api=1&destination=${spot.p[0]},${spot.p[1]}`} target="_blank" className="p-1.5 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-blue-600 transition">
+                                                    <Navigation size={12} />
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <h3 className="text-base font-bold text-white mb-1 line-clamp-1">{spot.n}</h3>
+                                        <p className="text-xs text-slate-400 line-clamp-2">{spot.d}</p>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Next Card */}
+                            {navParams.next && (
+                                <div 
+                                    onClick={() => { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(0); }}
+                                    className={`w-[300px] shrink-0 snap-center bg-slate-950/90 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-2xl flex flex-col justify-center items-center text-center cursor-pointer transition-all duration-300 transform ${activeSpotIndex === (tripData.find(h => h.id === selectedHubId)?.days[selectedDayIdx].spots.length || 0) + (navParams.prev ? 1 : 0) ? 'border-blue-500 scale-100 opacity-100' : 'scale-95 opacity-70'}`}
+                                >
+                                    <div className="text-slate-500 text-xs font-mono mb-2">{navParams.next.date}</div>
+                                    <h3 className="text-lg font-bold text-slate-300 flex items-center gap-2">
+                                        다음 일정 <ArrowRight size={18} />
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-1">{navParams.next.title}</p>
+                                </div>
+                            )}
+
                             <div className="w-[calc(50vw-150px)] shrink-0 snap-center"></div>
                         </div>
                     </div>
