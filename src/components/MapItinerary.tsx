@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import L from "leaflet";
 import { fetchTripData, updateTripData } from "@/services/tripService";
 import { Hub, BudgetItem, TodoItem, TRIP_DATA, BUDGET_DATA, TODO_DATA } from "@/data/tripData";
-import { Clock, MapPin, Navigation, Menu, X, ArrowLeft, ExternalLink, RefreshCw, Plus, Trash2, CheckCircle2, Circle, ArrowRight, Calendar } from "lucide-react";
+import { Clock, MapPin, Navigation, Menu, X, ArrowLeft, ExternalLink, RefreshCw, Plus, Trash2, CheckCircle2, Circle, ArrowRight, Calendar, Coffee, Utensils, ShoppingBag, Banknote, Copy, Languages, Calculator, Siren } from "lucide-react";
 
 export default function MapItinerary() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -22,7 +22,7 @@ export default function MapItinerary() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [viewState, setViewState] = useState<'hubs' | 'days' | 'spots'>('hubs');
-  const [activeTab, setActiveTab] = useState<'itinerary' | 'budget' | 'todo'>('itinerary');
+  const [activeTab, setActiveTab] = useState<'itinerary' | 'budget' | 'todo' | 'tools'>('itinerary');
   const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
   const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null);
   const [activeSpotIndex, setActiveSpotIndex] = useState<number>(0);
@@ -30,6 +30,10 @@ export default function MapItinerary() {
   const [currentTime, setCurrentTime] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   const [headerTitle, setHeaderTitle] = useState("여행 전체 일정");
+
+  // Tools State
+  const [jpyAmount, setJpyAmount] = useState<string>("1000");
+  const EXCHANGE_RATE = 9.1; // Simple static rate for prototype
 
   // Nav Params Memo
   const navParams = useMemo(() => {
@@ -222,13 +226,27 @@ export default function MapItinerary() {
         const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.n)}`;
         const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.p[0]},${spot.p[1]}`;
 
+        // Nearby Search Links
+        const lat = spot.p[0];
+        const lng = spot.p[1];
+        const nearCafeUrl = `https://www.google.com/maps/search/cafe/@${lat},${lng},16z`;
+        const nearFoodUrl = `https://www.google.com/maps/search/restaurant/@${lat},${lng},16z`;
+        const nearMartUrl = `https://www.google.com/maps/search/convenience+store/@${lat},${lng},16z`;
+        const nearAtmUrl = `https://www.google.com/maps/search/ATM/@${lat},${lng},16z`;
+
         marker.addTo(layer).bindPopup(`
-            <div class="text-center min-w-[120px]">
-                <b class="text-slate-900 block mb-1">${spot.n}</b>
-                <div class="flex justify-center gap-2 text-xs mt-1">
+            <div class="text-center min-w-[140px]">
+                <b class="text-slate-900 block mb-1 text-sm">${spot.n}</b>
+                <div class="flex justify-center gap-3 text-xs mt-2 mb-2">
                     <a href="${googleMapsUrl}" target="_blank" class="text-slate-600 underline">지도</a>
-                    <span class="text-slate-400">|</span>
+                    <span class="text-slate-300">|</span>
                     <a href="${dirUrl}" target="_blank" class="text-blue-600 underline">경로</a>
+                </div>
+                <div class="grid grid-cols-4 gap-1 mt-2 border-t pt-2">
+                    <a href="${nearCafeUrl}" target="_blank" title="카페" class="flex flex-col items-center text-[10px] text-slate-500 hover:text-orange-500"><span class="text-lg">☕</span></a>
+                    <a href="${nearFoodUrl}" target="_blank" title="맛집" class="flex flex-col items-center text-[10px] text-slate-500 hover:text-red-500"><span class="text-lg">🍜</span></a>
+                    <a href="${nearMartUrl}" target="_blank" title="편의점" class="flex flex-col items-center text-[10px] text-slate-500 hover:text-green-500"><span class="text-lg">🏪</span></a>
+                    <a href="${nearAtmUrl}" target="_blank" title="ATM" class="flex flex-col items-center text-[10px] text-slate-500 hover:text-blue-500"><span class="text-lg">🏧</span></a>
                 </div>
             </div>
         `);
@@ -277,6 +295,18 @@ export default function MapItinerary() {
             alert('위치 정보를 가져올 수 없습니다: ' + err.message);
         }
     );
+  };
+
+  const handleCopySchedule = () => {
+    if (!selectedHubId || selectedDayIdx === null) return;
+    const hub = tripData.find(h => h.id === selectedHubId);
+    if (!hub) return;
+    const day = hub.days[selectedDayIdx];
+
+    const text = `[🇯🇵 ${day.title}]\n${day.date}\n\n` + 
+                 day.spots.map(s => `• ${s.t} ${s.n}\n  ${s.d}`).join('\n\n');
+    
+    navigator.clipboard.writeText(text).then(() => alert("일정이 클립보드에 복사되었습니다!"));
   };
 
   const handleSave = async () => {
@@ -394,6 +424,76 @@ export default function MapItinerary() {
 
   // --- Render Helpers ---
 
+  const renderTools = () => {
+    const jpy = parseInt(jpyAmount) || 0;
+    const krw = Math.round(jpy * EXCHANGE_RATE);
+
+    return (
+        <div className="p-4 animate-in space-y-4">
+            {/* Currency Converter */}
+            <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-inner">
+                <h3 className="font-bold text-yellow-400 flex items-center gap-2 mb-4">
+                    <Calculator size={18} /> 환율 계산기
+                </h3>
+                <div className="flex items-center gap-2 mb-2">
+                    <div className="flex-1">
+                        <label className="text-xs text-slate-500 mb-1 block">JPY (엔화)</label>
+                        <input 
+                            type="number" 
+                            value={jpyAmount} 
+                            onChange={(e) => setJpyAmount(e.target.value)}
+                            className="w-full bg-slate-800 text-white p-2 rounded-lg border border-slate-700 focus:border-yellow-500 outline-none font-mono text-lg"
+                        />
+                    </div>
+                    <ArrowRight size={16} className="text-slate-600 mt-5" />
+                    <div className="flex-1">
+                        <label className="text-xs text-slate-500 mb-1 block">KRW (원화)</label>
+                        <div className="w-full bg-slate-950 text-slate-300 p-2 rounded-lg border border-slate-800 font-mono text-lg">
+                            {krw.toLocaleString()}
+                        </div>
+                    </div>
+                </div>
+                <p className="text-[10px] text-slate-500 text-right">적용 환율: 100엔 = {EXCHANGE_RATE * 100}원</p>
+            </div>
+
+            {/* Survival Phrases */}
+            <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-inner">
+                <h3 className="font-bold text-pink-400 flex items-center gap-2 mb-4">
+                    <Languages size={18} /> 필수 일본어
+                </h3>
+                <div className="space-y-3">
+                    {[
+                        { k: "이거 얼마예요?", j: "Kore wa ikura desu ka?", p: "코레와 이쿠라 데스까?" },
+                        { k: "화장실 어디예요?", j: "Toire wa doko desu ka?", p: "토이레와 도코 데스까?" },
+                        { k: "물 좀 주세요.", j: "Omizu o kudasai.", p: "오미즈 오 쿠다사이." },
+                        { k: "영어 메뉴 있나요?", j: "Eigo no menyu wa arimasu ka?", p: "에이고노 메뉴와 아리마스까?" },
+                        { k: "계산해 주세요.", j: "Okaikei onegaishimasu.", p: "오카이케 오네가이시마스." }
+                    ].map((item, idx) => (
+                        <div key={idx} className="bg-slate-950/50 p-3 rounded-lg border border-slate-800/50">
+                            <p className="text-sm text-slate-200 font-bold mb-0.5">{item.k}</p>
+                            <p className="text-xs text-slate-400 mb-0.5">{item.j}</p>
+                            <p className="text-[10px] text-pink-300/80">{item.p}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Emergency */}
+            <div className="bg-red-900/10 p-5 rounded-2xl border border-red-900/30 shadow-inner">
+                <h3 className="font-bold text-red-400 flex items-center gap-2 mb-2">
+                    <Siren size={18} /> 긴급 연락처
+                </h3>
+                <div className="text-xs text-slate-300 space-y-1">
+                    <p>경찰: <b className="text-white">110</b></p>
+                    <p>구급/화재: <b className="text-white">119</b></p>
+                    <p>영사관 (후쿠오카): <b className="text-white">+81-92-771-0461</b></p>
+                    <p>영사관 (오사카): <b className="text-white">+81-6-6213-1401</b></p>
+                </div>
+            </div>
+        </div>
+    );
+  };
+
   const renderItineraryList = () => {
     if (isLoading) {
         return (
@@ -495,6 +595,10 @@ export default function MapItinerary() {
                         <ArrowLeft size={12} className="mr-1" /> 날짜 목록으로
                     </button>
                     <div className="flex gap-2">
+                         {/* Copy Button */}
+                         <button onClick={handleCopySchedule} className="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition border border-slate-700 flex items-center gap-1 text-slate-300">
+                             <Copy size={10} /> 복사
+                         </button>
                         {isEditMode ? (
                             <button onClick={handleSave} disabled={isSaving} className="text-[10px] bg-green-600 hover:bg-green-500 px-2 py-1 rounded flex items-center gap-1 transition">
                                 {isSaving ? <RefreshCw size={10} className="animate-spin" /> : "저장"}
@@ -568,13 +672,15 @@ export default function MapItinerary() {
                                 </div>
 
                                 {!isEditMode && isActive && (
-                                    <div className="flex gap-3 mt-2 animate-in slide-in-from-top-2 fade-in">
-                                        <a href={googleMapsUrl} target="_blank" className="inline-flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-400 transition">
-                                            <ExternalLink size={10} /> Google Map
-                                        </a>
-                                        <a href={dirUrl} target="_blank" className="inline-flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 transition">
-                                            <Navigation size={10} /> 경로 찾기
-                                        </a>
+                                    <div className="flex flex-col gap-3 mt-2 animate-in slide-in-from-top-2 fade-in">
+                                        <div className="flex gap-3">
+                                            <a href={googleMapsUrl} target="_blank" className="inline-flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-400 transition">
+                                                <ExternalLink size={10} /> Google Map
+                                            </a>
+                                            <a href={dirUrl} target="_blank" className="inline-flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 transition">
+                                                <Navigation size={10} /> 경로 찾기
+                                            </a>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -780,6 +886,12 @@ export default function MapItinerary() {
                         className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${activeTab === 'todo' ? 'bg-green-600 text-white shadow-lg shadow-green-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
                         To-do
                     </button>
+                    <button 
+                        onClick={() => setActiveTab('tools')} 
+                        className={`p-2 text-slate-400 hover:text-yellow-400 hover:bg-slate-800 rounded-lg transition-all duration-200 ${activeTab === 'tools' ? 'text-yellow-400 bg-slate-800' : ''}`}
+                        title="여행 도구">
+                        <Calculator size={18} />
+                    </button>
                 </nav>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar relative p-0 pb-32 md:pb-10">
@@ -788,6 +900,7 @@ export default function MapItinerary() {
                     )}
                     {activeTab === 'budget' && renderBudgetList()}
                     {activeTab === 'todo' && renderTodoList()}
+                    {activeTab === 'tools' && renderTools()}
                 </div>
             </aside>
 
@@ -827,6 +940,13 @@ export default function MapItinerary() {
                                 // Adjust index logic for highlighting active state
                                 const visualIndex = idx + (navParams.prev ? 1 : 0);
                                 const isActive = activeSpotIndex === visualIndex;
+                                
+                                const lat = spot.p[0];
+                                const lng = spot.p[1];
+                                const nearCafeUrl = `https://www.google.com/maps/search/cafe/@${lat},${lng},16z`;
+                                const nearFoodUrl = `https://www.google.com/maps/search/restaurant/@${lat},${lng},16z`;
+                                const nearMartUrl = `https://www.google.com/maps/search/convenience+store/@${lat},${lng},16z`;
+                                const nearAtmUrl = `https://www.google.com/maps/search/ATM/@${lat},${lng},16z`;
 
                                 return (
                                     <div 
@@ -847,6 +967,22 @@ export default function MapItinerary() {
                                         </div>
                                         <h3 className="text-base font-bold text-white mb-1 line-clamp-1">{spot.n}</h3>
                                         <p className="text-xs text-slate-400 line-clamp-2">{spot.d}</p>
+                                        
+                                        {/* Mobile Nearby Search */}
+                                        <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-700/50">
+                                            <a href={nearCafeUrl} target="_blank" className="flex flex-col items-center gap-1 text-[10px] text-slate-400 hover:text-orange-400">
+                                                <Coffee size={16} /> 카페
+                                            </a>
+                                            <a href={nearFoodUrl} target="_blank" className="flex flex-col items-center gap-1 text-[10px] text-slate-400 hover:text-red-400">
+                                                <Utensils size={16} /> 맛집
+                                            </a>
+                                            <a href={nearMartUrl} target="_blank" className="flex flex-col items-center gap-1 text-[10px] text-slate-400 hover:text-green-400">
+                                                <ShoppingBag size={16} /> 편의점
+                                            </a>
+                                            <a href={nearAtmUrl} target="_blank" className="flex flex-col items-center gap-1 text-[10px] text-slate-400 hover:text-blue-400">
+                                                <Banknote size={16} /> ATM
+                                            </a>
+                                        </div>
                                     </div>
                                 );
                             })}
