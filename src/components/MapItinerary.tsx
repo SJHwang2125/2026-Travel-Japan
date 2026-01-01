@@ -594,7 +594,7 @@ export default function MapItinerary() {
                     {/* Next Day Navigation (Desktop) */}
                     {!isEditMode && navParams.next && (
                         <div 
-                            onClick={() => { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(navParams.next.dIdx > 0 ? 0 : 0); }}
+                            onClick={() => { if (navParams.next) { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(navParams.next.dIdx > 0 ? 0 : 0); } }}
                             className="mt-8 p-4 rounded-xl border border-dashed border-slate-700 hover:border-blue-500 hover:bg-slate-800/50 cursor-pointer transition text-center group animate-in"
                         >
                             <p className="text-xs text-slate-500 group-hover:text-blue-400 mb-1">다음 날 일정 이어보기</p>
@@ -812,7 +812,7 @@ export default function MapItinerary() {
                             {/* Prev Card */}
                             {navParams.prev && (
                                 <div 
-                                    onClick={() => { setSelectedHubId(navParams.prev.hId); setSelectedDayIdx(navParams.prev.dIdx); setActiveSpotIndex(0); }}
+                                    onClick={() => { if(navParams.prev) { setSelectedHubId(navParams.prev.hId); setSelectedDayIdx(navParams.prev.dIdx); setActiveSpotIndex(0); } }}
                                     className={`w-[300px] shrink-0 snap-center bg-slate-950/90 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-2xl flex flex-col justify-center items-center text-center cursor-pointer transition-all duration-300 transform ${activeSpotIndex === 0 ? 'border-blue-500 scale-100 opacity-100' : 'scale-95 opacity-70'}`}
                                 >
                                     <div className="text-slate-500 text-xs font-mono mb-2">{navParams.prev.date}</div>
@@ -854,7 +854,7 @@ export default function MapItinerary() {
                             {/* Next Card */}
                             {navParams.next && (
                                 <div 
-                                    onClick={() => { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(0); }}
+                                    onClick={() => { if(navParams.next) { setSelectedHubId(navParams.next.hId); setSelectedDayIdx(navParams.next.dIdx); setActiveSpotIndex(0); } }}
                                     className={`w-[300px] shrink-0 snap-center bg-slate-950/90 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-2xl flex flex-col justify-center items-center text-center cursor-pointer transition-all duration-300 transform ${activeSpotIndex === (tripData.find(h => h.id === selectedHubId)?.days[selectedDayIdx].spots.length || 0) + (navParams.prev ? 1 : 0) ? 'border-blue-500 scale-100 opacity-100' : 'scale-95 opacity-70'}`}
                                 >
                                     <div className="text-slate-500 text-xs font-mono mb-2">{navParams.next.date}</div>
