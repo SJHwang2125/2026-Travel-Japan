@@ -35,6 +35,9 @@ export default function MapItinerary() {
   const [jpyAmount, setJpyAmount] = useState<string>("1000");
   const EXCHANGE_RATE = 9.1; // Simple static rate for prototype
 
+  // Edit Location State
+  const [pickingLocation, setPickingLocation] = useState<{ dayIdx: number, spotIdx: number } | null>(null);
+
   // Nav Params Memo
   const navParams = useMemo(() => {
     if (!selectedHubId || selectedDayIdx === null || !tripData.length) return { prev: null, next: null };
@@ -112,6 +115,49 @@ export default function MapItinerary() {
       console.error("Map initialization failed", e);
     }
   }, []);
+
+  // Map Click Listener for picking location
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const onMapClick = (e: L.LeafletMouseEvent) => {
+        if (pickingLocation && selectedHubId && selectedDayIdx !== null) {
+            const { lat, lng } = e.latlng;
+            // Update the specific spot
+            const newData = [...tripData];
+            const hub = newData.find(h => h.id === selectedHubId);
+            if (hub) {
+                const spot = hub.days[selectedDayIdx].spots[pickingLocation.spotIdx];
+                if (spot) {
+                    spot.p = [lat, lng];
+                    setTripData(newData);
+                    setPickingLocation(null); // Exit picking mode
+                    
+                    // Show visual confirmation
+                    L.popup()
+                        .setLatLng([lat, lng])
+                        .setContent("위치가 변경되었습니다.")
+                        .openOn(mapRef.current!);
+                }
+            }
+        }
+    };
+
+    if (pickingLocation) {
+        mapRef.current.getContainer().style.cursor = 'crosshair';
+        mapRef.current.on('click', onMapClick);
+    } else {
+        mapRef.current.getContainer().style.cursor = '';
+        mapRef.current.off('click', onMapClick);
+    }
+
+    return () => {
+        if (mapRef.current) {
+            mapRef.current.off('click', onMapClick);
+            mapRef.current.getContainer().style.cursor = '';
+        }
+    };
+  }, [pickingLocation, tripData, selectedHubId, selectedDayIdx]);
 
   // Sync Map with View State & Data
   useEffect(() => {
@@ -650,9 +696,15 @@ export default function MapItinerary() {
                                                     rows={2}
                                                     onChange={(e) => handleSpotChange(selectedHubId!, selectedDayIdx!, idx, 'd', e.target.value)} 
                                                 />
+                                                <button 
+                                                    onClick={() => setPickingLocation({ dayIdx: selectedDayIdx!, spotIdx: idx })}
+                                                    className={`w-full py-1.5 rounded text-[10px] flex items-center justify-center gap-1 border transition ${pickingLocation?.spotIdx === idx ? 'bg-blue-600 text-white border-blue-500 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'}`}
+                                                >
+                                                    <MapPin size={12} /> {pickingLocation?.spotIdx === idx ? "지도에서 위치 클릭하세요..." : "지도에서 위치 설정"}
+                                                </button>
                                             </div>
                                         ) : (
-                                            <div className="cursor-pointer" onClick={() => { setActiveSpotIndex(idx + (navParams.prev ? 1 : 0)); }}>
+                                            <div className="cursor-pointer" onClick={() => { setActiveSpotIndex(idx); }}>
                                                 <span className={`text-[10px] font-mono text-blue-300 bg-blue-900/30 px-1.5 py-0.5 rounded mb-1 inline-block border border-blue-500/10 ${isActive ? 'text-blue-200 bg-blue-600/50 border-blue-400' : ''}`}>{spot.t}</span>
                                                 <h4 className={`text-sm font-bold transition ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'}`}>{spot.n}</h4>
                                                 <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{spot.d}</p>
